@@ -8,7 +8,9 @@ from torch.utils import data
 from .metrics import classification_metric
 from .metrics import regression_metric
 
-class Trainer:
+from .utils import dataset_has_target
+
+class Trainer(object):
   def __init__(self,
                model,
                optimizer,
@@ -58,8 +60,8 @@ class Trainer:
         print(f'\tTrain Loss: {loss}, Metric: {metric}')
 
       if Xv is not None:
-        loss, metric = self.predict(Xv, yv, batch_size=batch_size,
-                                    transform=validation_transform)
+        _, loss, metric = self.predict(Xv, yv, batch_size=batch_size,
+                                       transform=validation_transform)
         history['validation']['loss'].append(loss)
         history['validation']['metric'].append(metric)
         print(f'\tValid Loss: {loss}, Metric: {metric}')
@@ -83,14 +85,14 @@ class Trainer:
 
   def _fit_xy(self, *, X, y, batch_size=None, shuffle=None, transform=None):
     dataset = data.TensorDataset(X, y, transform=transform)
-    return self.fit_dataset(dataset=dataset, batch_size=batch_size,
+    return self._fit_dataset(dataset=dataset, batch_size=batch_size,
                             shuffle=shuffle)
 
   def _fit_dataset(self, *, dataset, batch_size=None, shuffle=None):
     dataloader = data.DataLoader(dataset, shuffle=shuffle,
                                  batch_size=batch_size, pin_memory=True,
                                  num_workers=os.cpu_count())
-    return self.fit_dataloader(dataloader=dataloader)
+    return self._fit_dataloader(dataloader=dataloader)
 
   def _fit_dataloader(self, *, dataloader):
     was_training = self.model.training
@@ -120,8 +122,9 @@ class Trainer:
 
   ########################### Inference Routines ###############################
   def predict(self, X_or_data, y=None, transform=None, batch_size=128):
-    if y is not None:
-      assert isinstance(X_or_data, type(y)), "X and y must be the same type"
+    if isinstance(X_or_data, torch.Tensor):
+      if y is not None:
+        assert isinstance(X_or_data, type(y)), "X and y must be the same type"
       return self._predict_xy(X_or_data, y, batch_size, transform=transform)
     elif isinstance(X_or_data, data.Dataset):
       # Dataset case
@@ -132,39 +135,46 @@ class Trainer:
     raise NotImplementedError("Cannot run fit with the first argument being",
                               type(X_or_train_data))
 
-  def _predict_xy(self, *, X, y, batch_size=None, transform=None):
-    dataset = data.TensorDataset(X, y, transform=transform)
-    return self.predict_dataset(dataset=dataset, batch_size=batch_size)
+  def _predict_xy(self, *, X, y=None, batch_size=None, transform=None):
+    if y is None:
+      dataset = data.TensorDataset(X, transform=transform)
+    else:
+      dataset = data.TensorDataset(X, y, transform=transform)
+    return self._predict_dataset(dataset=dataset, batch_size=batch_size)
 
   def _predict_dataset(self, *, dataset, batch_size=None):
     dataloader = data.DataLoader(dataset, batch_size=batch_size,
                                  pin_memory=True, num_workers=os.cpu_count())
-    return self.predict_dataloader(dataloader=dataloader)
+    return self._predict_dataloader(dataloader=dataloader)
 
   def _predict_dataloader(self, *, dataloader):
     was_training = self.model.training
     device = next(self.model.parameters()).device
     self.model.train(False)
 
+    has_target = dataset_has_target(dataloader.dataset)
+
     epoch_loss = 0.0
     epoch_metric = 0.0
     samples = 0
     with torch.no_grad():
-      for X, y in dataloader:
-        X = X.to(device)
-        y = y.to(device)
+      for sample in dataloader:
+        X = sample[0].to(device)
+        if has_target:
+          y = sample[1].to(device)
 
         y_hat = self.model(X)
+        if not has_target:
+          y = y_hat
         loss = self.loss_function(y_hat, y)
-
-        prediction, metric = self.metric_function(y_hat, y)  # torch.max(y_hat, axis=1)
+        prediction, metric = self.metric_function(y_hat, y)
 
         batch_size = X.size(0)
         samples += batch_size
         epoch_loss += loss.item() * batch_size
         epoch_metric += metric
     self.model.train(was_training)
-    return epoch_loss / samples, epoch_metric / samples
+    return prediction, epoch_loss / samples, epoch_metric / samples
 
 
 class ClassificationTrainer(Trainer):
