@@ -70,29 +70,29 @@ class Trainer:
                 transform=None):
     if y is not None:
       assert isinstance(X_or_data, type(y)), "X and y must be the same type"
-      return self.fit_xy(X_or_data, y, batch_size,
+      return self._fit_xy(X_or_data, y, batch_size,
                          shuffle, transform=transform)
     elif isinstance(X_or_data, data.Dataset):
       # Dataset case
-      return self.fit_dataset(X_or_data, batch_size, shuffle)
+      return self._fit_dataset(X_or_data, batch_size, shuffle)
     elif isinstance(X_or_data, data.DataLoader):
       # Dataloader case
-      return self.fit_dataloader(dataloader=X_or_data)
+      return self._fit_dataloader(dataloader=X_or_data)
     raise NotImplementedError("Cannot run fit with the first argument being",
                               type(X_or_train_data))
 
-  def fit_xy(self, *, X, y, batch_size=None, shuffle=None, transform=None):
+  def _fit_xy(self, *, X, y, batch_size=None, shuffle=None, transform=None):
     dataset = data.TensorDataset(X, y, transform=transform)
     return self.fit_dataset(dataset=dataset, batch_size=batch_size,
                             shuffle=shuffle)
 
-  def fit_dataset(self, *, dataset, batch_size=None, shuffle=None):
+  def _fit_dataset(self, *, dataset, batch_size=None, shuffle=None):
     dataloader = data.DataLoader(dataset, shuffle=shuffle,
                                  batch_size=batch_size, pin_memory=True,
                                  num_workers=os.cpu_count())
     return self.fit_dataloader(dataloader=dataloader)
 
-  def fit_dataloader(self, *, dataloader):
+  def _fit_dataloader(self, *, dataloader):
     was_training = self.model.training
     device = next(self.model.parameters()).device
     self.model.train(True)
@@ -122,26 +122,26 @@ class Trainer:
   def predict(self, X_or_data, y=None, transform=None, batch_size=128):
     if y is not None:
       assert isinstance(X_or_data, type(y)), "X and y must be the same type"
-      return self.predict_xy(X_or_data, y, batch_size, transform=transform)
+      return self._predict_xy(X_or_data, y, batch_size, transform=transform)
     elif isinstance(X_or_data, data.Dataset):
       # Dataset case
-      return self.predict_dataset(X_or_data, batch_size)
+      return self._predict_dataset(X_or_data, batch_size)
     elif isinstance(X_or_data, data.DataLoader):
       # Dataloader case
-      return self.predict_dataloader(dataloader=X_or_data)
+      return self._predict_dataloader(dataloader=X_or_data)
     raise NotImplementedError("Cannot run fit with the first argument being",
                               type(X_or_train_data))
 
-  def predict_xy(self, *, X, y, batch_size=None, transform=None):
+  def _predict_xy(self, *, X, y, batch_size=None, transform=None):
     dataset = data.TensorDataset(X, y, transform=transform)
     return self.predict_dataset(dataset=dataset, batch_size=batch_size)
 
-  def predict_dataset(self, *, dataset, batch_size=None):
+  def _predict_dataset(self, *, dataset, batch_size=None):
     dataloader = data.DataLoader(dataset, batch_size=batch_size,
                                  pin_memory=True, num_workers=os.cpu_count())
     return self.predict_dataloader(dataloader=dataloader)
 
-  def predict_dataloader(self, *, dataloader):
+  def _predict_dataloader(self, *, dataloader):
     was_training = self.model.training
     device = next(self.model.parameters()).device
     self.model.train(False)
